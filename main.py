@@ -925,6 +925,5 @@ def main() -> int:
         log.warning("用户中断")
         return 130
 
-
 if __name__ == "__main__":
     sys.exit(main())
