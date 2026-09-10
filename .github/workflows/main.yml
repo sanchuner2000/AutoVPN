@@ -1,27 +1,71 @@
-name: V2ray URL Processor
+name: V2Ray Subscription Aggregator
 
+# 触发条件:
+#   - workflow_dispatch: 在 GitHub 网页手动点 "Run workflow"
+#   - schedule: 每 6 小时自动跑一次 (避免 GitHub rate limit; 想 1 小时改 '0 * * * *')
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 */6 * * *'
+
+# 防止上一次还没跑完就被新的覆盖
+concurrency:
+  group: v2agg
+  cancel-in-progress: false
+
+# 写权限: 让 workflow 能 push commit
+permissions:
+  contents: write
 
 jobs:
-  build:
+  aggregate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.x' 
-    - name: Install dependencies
-      run: pip install requests
-    - name: Run Python script
-      run: python main.py
-    - name: Commit and push
-      run: |
-        git config --global user.name "acymz"
-        git config --global user.email "cymz6@hotmail.com"
-        git add data/V2.txt history/V2_$(date +%Y%m%d%H%M).txt
-        git commit -m "Update V2.txt and add to history"
-        git push -f
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run aggregator (no test, no startup, just fetch+write)
+        run: python main.py
+
+      - name: Show summary
+        if: always()
+        run: |
+          echo "===== Files written ====="
+          ls -la data/ 2>/dev/null || echo "no data/ dir"
+          echo ""
+          echo "===== history/ (latest 5) ====="
+          ls -la history/ 2>/dev/null | tail -5 || echo "no history/ dir"
+          echo ""
+          echo "===== data/V2.txt (head 200 chars) ====="
+          head -c 200 data/V2.txt 2>/dev/null || echo "no V2.txt"
+          echo ""
+          echo "===== data/V2_plain.txt (line count) ====="
+          wc -l data/V2_plain.txt 2>/dev/null || echo "no V2_plain.txt"
+          echo ""
+          echo "===== data/V2.yaml (proxy count) ====="
+          grep -c "^  - " data/V2.yaml 2>/dev/null || echo "no V2.yaml or no proxies"
+
+      - name: Commit and push
+        run: |
+          git config user.name "sanchuner2000"
+          git config user.email "sanchuner2000@users.noreply.github.com"
+          git add data/ history/ sources.txt 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          NODES=$(wc -l < data/V2_plain.txt 2>/dev/null || echo "?")
+          git commit -m "chore: refresh V2Ray subscriptions (${NODES} nodes, ${TIMESTAMP})"
+          git push
