@@ -1,0 +1,10 @@
+# V2Ray / Clash 公开订阅源
+# 一行一个 URL,以 # 开头的行为注释,空行忽略
+# 想临时禁用某个源,在行首加 # 即可
+
+https://etoneya.su/1
+https://raw.githubusercontent.com/acymz/AutoVPN/main/data/V2.txt
+https://raw.githubusercontent.com/free18/v2ray/refs/heads/main/v.txt
+https://raw.githubusercontent.com/kooker/FreeSubsCheck/main/base64.txt
+https://raw.githubusercontent.com/xiaoji235/airport-free/main/v2ray.txt
+https://raw.githubusercontent.com/Pawdroid/Free-servers/refs/heads/main/sub
