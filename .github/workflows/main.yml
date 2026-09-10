@@ -1,19 +1,14 @@
 name: V2Ray Subscription Aggregator
 
-# 触发条件:
-#   - workflow_dispatch: 手动触发 (Actions 页面点 Run workflow)
-#   - schedule: 每 6 小时自动跑一次
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
 
-# 防止上一次还没跑完就被新的覆盖
 concurrency:
   group: v2agg
   cancel-in-progress: false
 
-# 写权限: 让 workflow 能 push commit
 permissions:
   contents: write
 
@@ -26,18 +21,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          # 不用 v5: v5 默认会做依赖文件自动检测, 没有 requirements.txt 就硬报错
-          # 不用 cache: 简单粗暴, 云端跑又不频繁, 慢 3s 无所谓
-
-      - name: Install dependencies
-        run: pip install requests
-
-      - name: Run aggregator (no test, no startup, just fetch+write)
-        run: python main.py
+      - name: Run aggregator
+        run: |
+          echo "Python version:"
+          python3 --version
+          echo ""
+          echo "Install requests:"
+          python3 -m pip install --quiet --user requests
+          echo ""
+          echo "Run aggregator:"
+          python3 main.py
 
       - name: Show summary
         if: always()
