@@ -1,6 +1,9 @@
-name: Clean Auto Update DryRun
+name: Clean Auto Update
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 22 * * *' # UTC22点 = 北京时间早上06:00
+
 jobs:
   clean-runs:
     runs-on: ubuntu-latest
@@ -8,22 +11,18 @@ jobs:
       TOKEN: ${{ secrets.PAT_TOKEN }}
       REPO: sanchuner2000/AutoVPN
     steps:
-      - name: DryRun Test (NO DELETE)
+      - name: Clean old workflow runs
         run: |
-          # 不遇到错误直接退出，方便看返回信息
           set +e
           clean_workflow_by_id() {
             local WF_ID="$1"
-            echo "===== 预览工作流ID: $WF_ID ====="
-            # Classic PAT 使用 token 而不是 Bearer
+            echo "===== 清理工作流ID: $WF_ID ====="
             RESP=$(curl -s -w "\nHTTP_STATUS=%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows/${WF_ID}/runs?per_page=100")
             HTTP_CODE=$(echo "$RESP" | tail -n1 | sed 's/HTTP_STATUS=//')
             BODY=$(echo "$RESP" | head -n -1)
             echo "HTTP状态码: $HTTP_CODE"
-            echo "API返回原始内容:"
-            echo "$BODY"
             if [ "$HTTP_CODE" -ne 200 ];then
-              echo "❌ API请求失败，跳过这个工作流"
+              echo "❌ API请求失败，跳过"
               return
             fi
             RUN_IDS=$(echo "$BODY" | jq -r '.workflow_runs[] | select(.status=="completed") | .id')
@@ -34,18 +33,17 @@ jobs:
               echo "记录不足2条，无需删除"
               return
             fi
-            echo "【预览待删除ID列表】"
             for ((i=1; i<count; i++)); do
               rid=${arr[$i]}
-              echo $rid
+              echo "删除 Run ID: $rid"
+              curl -X DELETE -s -H "Authorization: token $TOKEN" "https://api.github.com/repos/${REPO}/actions/runs/$rid" || echo "⚠ 删除失败: $rid"
             done
-            echo "===== ID $WF_ID 预览结束 ====="
+            echo "===== ID $WF_ID 清理完成 ====="
           }
+          # 主工作流 ID
           clean_workflow_by_id 354732225
-          # 获取自身workflow id
-          RESP_SELF=$(curl -s -w "\nHTTP_STATUS=%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows")
-          HTTP_SELF=$(echo "$RESP_SELF" | tail -n1 | sed 's/HTTP_STATUS=//')
-          BODY_SELF=$(echo "$RESP_SELF" | head -n -1)
-          SELF_ID=$(echo "$BODY_SELF" | jq -r '.workflows[] | select(.name=="Clean Auto Update") | .id')
-          echo "自身Workflow ID: $SELF_ID"
+          # 获取本清理工作流自身ID，清理自己的历史记录
+          RESP_SELF=$(curl -s -H "Authorization: token $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows")
+          SELF_ID=$(echo "$RESP_SELF" | jq -r '.workflows[] | select(.name=="Clean Auto Update") | .id')
+          echo "当前清理脚本自身Workflow ID: $SELF_ID"
           clean_workflow_by_id $SELF_ID
