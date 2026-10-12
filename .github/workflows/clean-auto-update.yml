@@ -2,25 +2,21 @@ name: Clean Auto Update
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *' # UTC22:00 = 北京时间次日 06:00
+    - cron: '0 22 * * *' # UTC22点 = 北京时间06:00
 
 jobs:
   clean-runs:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.PAT_TOKEN }}
-      REPO: sanchuner2000/AutoVPN
     steps:
-      - name: Install gh cli
+      - name: Clean workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          REPO: sanchuner2000/AutoVPN
         run: |
-          sudo apt update
-          sudo apt install gh -y
-      - name: Clean workflow runs function
-        run: |
+          set -e
           clean_workflow() {
             local WORKFLOW_NAME="$1"
             echo "===== 开始清理工作流: $WORKFLOW_NAME ====="
-            # 获取已完成运行记录，按创建时间倒序
             run_ids=$(gh api -X GET "/repos/${REPO}/actions/workflows/${WORKFLOW_NAME}/runs" -F per_page=100 --jq '.workflow_runs[] | select(.status=="completed") | .id')
             arr=($run_ids)
             count=${#arr[@]}
@@ -29,15 +25,15 @@ jobs:
               echo "记录不足2条，无需删除"
               return
             fi
-            # 跳过第一条最新记录，其余全部删除
+            # 保留最新1条，其余全部删除
             for ((i=1; i<count; i++)); do
               rid=${arr[$i]}
               echo "删除 Run ID: $rid"
               gh api -X DELETE "/repos/${REPO}/actions/runs/$rid" || echo "警告：删除 $rid 失败"
             done
-            echo "===== $WORKFLOW_NAME 清理结束 ====="
+            echo "===== $WORKFLOW_NAME 清理完成 ====="
           }
-          # 清理 V2ray URL Processor
-          clean_workflow "V2ray URL Processor"
-          # 清理本工作流 Clean Auto Update
+          # 主工作流真实名称（从api查到：V2Ray Subscription Aggregator）
+          clean_workflow "V2Ray Subscription Aggregator"
+          # 清理自身 Clean Auto Update
           clean_workflow "Clean Auto Update"
