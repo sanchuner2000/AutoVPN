@@ -1,0 +1,33 @@
+name: Clean Auto Update
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 22 * * *' # UTC22点 = 北京时间次日06:00
+
+jobs:
+  clean-runs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow runs, keep only latest 1
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          REPO: sanchuner2000/AutoVPN
+          WORKFLOW_NAME: "V2ray URL Processor"
+        run: |
+          set -e
+          # 获取所有已完成的run，按时间倒序
+          runs=$(gh api -X GET "/repos/${REPO}/actions/workflows/${WORKFLOW_NAME}/runs" -F per_page=100 --jq '.workflow_runs[] | select(.status=="completed") | .id')
+          run_ids=($runs)
+          total=${#run_ids[@]}
+          echo "一共找到已完成运行记录数量：$total"
+          if (( total <= 1 )); then
+            echo "记录少于等于1条，无需删除"
+            exit 0
+          fi
+          # 跳过第1条（最新），剩下全部删除
+          for ((i=1; i<total; i++)); do
+            rid=${run_ids[$i]}
+            echo "正在删除 run id: $rid"
+            gh api -X DELETE "/repos/${REPO}/actions/runs/$rid" || echo "删除失败 $rid"
+          done
+          echo "清理完成"
