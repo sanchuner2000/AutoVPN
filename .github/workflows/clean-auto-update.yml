@@ -11,28 +11,40 @@ jobs:
       TOKEN: ${{ secrets.PAT_TOKEN }}
       REPO: sanchuner2000/AutoVPN
     steps:
-      - name: Clean old workflow runs
+      - name: Clean old workflow runs (分页完整版)
         run: |
           set +e
           clean_workflow_by_id() {
             local WF_ID="$1"
             echo "===== 清理工作流ID: $WF_ID ====="
-            RESP=$(curl -s -w "\nHTTP_STATUS=%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows/${WF_ID}/runs?per_page=100")
-            HTTP_CODE=$(echo "$RESP" | tail -n1 | sed 's/HTTP_STATUS=//')
-            BODY=$(echo "$RESP" | head -n -1)
-            echo "HTTP状态码: $HTTP_CODE"
-            if [ "$HTTP_CODE" -ne 200 ];then
-              echo "❌ API请求失败，跳过"
-              return
-            fi
-            RUN_IDS=$(echo "$BODY" | jq -r '.workflow_runs[] | select(.status=="completed") | .id')
-            arr=($RUN_IDS)
+            local ALL_RUNS=""
+            local PAGE=1
+            # 分页循环读取所有completed记录
+            while true; do
+              RESP=$(curl -s -w "\nHTTP_STATUS=%{http_code}" -H "Authorization: token $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows/${WF_ID}/runs?per_page=100&page=${PAGE}")
+              HTTP_CODE=$(echo "$RESP" | tail -n1 | sed 's/HTTP_STATUS=//')
+              BODY=$(echo "$RESP" | head -n -1)
+              if [ "$HTTP_CODE" -ne 200 ];then
+                echo "❌ API请求失败，跳过"
+                return
+              fi
+              # 提取本页已完成run id
+              PAGE_RUNS=$(echo "$BODY" | jq -r '.workflow_runs[] | select(.status=="completed") | .id')
+              if [ -z "$PAGE_RUNS" ]; then
+                break
+              fi
+              ALL_RUNS+=$'\n'"$PAGE_RUNS"
+              PAGE=$((PAGE+1))
+            done
+            # 去空行，转为数组
+            arr=($(echo "$ALL_RUNS" | sed '/^$/d'))
             count=${#arr[@]}
-            echo "已完成记录总数: $count"
+            echo "✅ 总共找到已完成记录总数: $count"
             if (( count <= 1 )); then
               echo "记录不足2条，无需删除"
               return
             fi
+            # 下标从1开始，跳过第0条最新，其余全部删除
             for ((i=1; i<count; i++)); do
               rid=${arr[$i]}
               echo "删除 Run ID: $rid"
@@ -42,7 +54,7 @@ jobs:
           }
           # 主工作流 ID
           clean_workflow_by_id 354732225
-          # 获取本清理工作流自身ID，清理自己的历史记录
+          # 获取本清理工作流自身ID，清理自己
           RESP_SELF=$(curl -s -H "Authorization: token $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows")
           SELF_ID=$(echo "$RESP_SELF" | jq -r '.workflows[] | select(.name=="Clean Auto Update") | .id')
           echo "当前清理脚本自身Workflow ID: $SELF_ID"
