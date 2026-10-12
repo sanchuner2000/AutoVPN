@@ -2,32 +2,42 @@ name: Clean Auto Update
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *' # UTC22点 = 北京时间次日06:00
+    - cron: '0 22 * * *' # UTC22:00 = 北京时间次日 06:00
 
 jobs:
   clean-runs:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+      REPO: sanchuner2000/AutoVPN
     steps:
-      - name: Delete old workflow runs, keep only latest 1
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
-          REPO: sanchuner2000/AutoVPN
-          WORKFLOW_NAME: "V2ray URL Processor"
+      - name: Install gh cli
         run: |
-          set -e
-          # 获取所有已完成的run，按时间倒序
-          runs=$(gh api -X GET "/repos/${REPO}/actions/workflows/${WORKFLOW_NAME}/runs" -F per_page=100 --jq '.workflow_runs[] | select(.status=="completed") | .id')
-          run_ids=($runs)
-          total=${#run_ids[@]}
-          echo "一共找到已完成运行记录数量：$total"
-          if (( total <= 1 )); then
-            echo "记录少于等于1条，无需删除"
-            exit 0
-          fi
-          # 跳过第1条（最新），剩下全部删除
-          for ((i=1; i<total; i++)); do
-            rid=${run_ids[$i]}
-            echo "正在删除 run id: $rid"
-            gh api -X DELETE "/repos/${REPO}/actions/runs/$rid" || echo "删除失败 $rid"
-          done
-          echo "清理完成"
+          sudo apt update
+          sudo apt install gh -y
+      - name: Clean workflow runs function
+        run: |
+          clean_workflow() {
+            local WORKFLOW_NAME="$1"
+            echo "===== 开始清理工作流: $WORKFLOW_NAME ====="
+            # 获取已完成运行记录，按创建时间倒序
+            run_ids=$(gh api -X GET "/repos/${REPO}/actions/workflows/${WORKFLOW_NAME}/runs" -F per_page=100 --jq '.workflow_runs[] | select(.status=="completed") | .id')
+            arr=($run_ids)
+            count=${#arr[@]}
+            echo "找到已完成记录总数: $count"
+            if (( count <= 1 )); then
+              echo "记录不足2条，无需删除"
+              return
+            fi
+            # 跳过第一条最新记录，其余全部删除
+            for ((i=1; i<count; i++)); do
+              rid=${arr[$i]}
+              echo "删除 Run ID: $rid"
+              gh api -X DELETE "/repos/${REPO}/actions/runs/$rid" || echo "警告：删除 $rid 失败"
+            done
+            echo "===== $WORKFLOW_NAME 清理结束 ====="
+          }
+          # 清理 V2ray URL Processor
+          clean_workflow "V2ray URL Processor"
+          # 清理本工作流 Clean Auto Update
+          clean_workflow "Clean Auto Update"
