@@ -2,39 +2,43 @@ name: Clean Auto Update
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *' # UTC22:00 = 北京时间早上06:00
+    - cron: '0 22 * * *' # UTC22:00 = 北京时间 06:00
 
 jobs:
   clean-runs:
     runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.PAT_TOKEN }}
+      REPO: sanchuner2000/AutoVPN
     steps:
-      - name: Clean old workflow runs
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
-          REPO: sanchuner2000/AutoVPN
+      - name: Clean old runs (curl version)
         run: |
           set -e
           clean_workflow_by_id() {
             local WF_ID="$1"
             echo "===== 清理工作流ID: $WF_ID ====="
-            run_ids=$(gh api -X GET "/repos/${REPO}/actions/workflows/${WF_ID}/runs" -F per_page=100 --jq '.workflow_runs[] | select(.status=="completed") | .id')
-            arr=($run_ids)
+            # 获取已完成的run列表，按时间倒序
+            RESP=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows/${WF_ID}/runs?per_page=100")
+            # 提取所有completed状态的run id
+            RUN_IDS=$(echo "$RESP" | jq -r '.workflow_runs[] | select(.status=="completed") | .id')
+            arr=($RUN_IDS)
             count=${#arr[@]}
             echo "已完成记录总数: $count"
             if (( count <= 1 )); then
               echo "记录不足2条，无需删除"
               return
             fi
-            # 保留最新第1条，其余全部删除
+            # 从第二个开始全部删除，第0个是最新
             for ((i=1; i<count; i++)); do
               rid=${arr[$i]}
-              echo "删除 run id: $rid"
-              gh api -X DELETE "/repos/${REPO}/actions/runs/$rid" || echo "⚠ 删除失败: $rid"
+              echo "删除 Run ID: $rid"
+              curl -X DELETE -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/${REPO}/actions/runs/$rid" || echo "⚠ 删除失败: $rid"
             done
             echo "===== ID $WF_ID 清理完成 ====="
           }
-          # 主工作流 V2Ray Subscription Aggregator ID
+          # 主工作流 ID V2Ray Subscription Aggregator
           clean_workflow_by_id 354732225
-          # 获取本清理任务自身workflow id，清理自己
-          SELF_WF_ID=$(gh api /repos/${REPO}/actions/workflows -q '.workflows[] | select(.name=="Clean Auto Update") | .id')
-          clean_workflow_by_id $SELF_WF_ID
+          # 获取本清理工作流自身ID
+          SELF_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "https://api.github.com/repos/${REPO}/actions/workflows" | jq -r '.workflows[] | select(.name=="Clean Auto Update") | .id')
+          echo "当前清理脚本自身Workflow ID: $SELF_ID"
+          clean_workflow_by_id $SELF_ID
